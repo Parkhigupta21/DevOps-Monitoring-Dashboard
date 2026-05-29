@@ -1,0 +1,63 @@
+# k8s/backend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  replicas: 2                    # run 2 pod copies for high availability
+  selector:
+    matchLabels:
+      app: backend               # Deployment manages pods with this label
+  strategy:
+    type: RollingUpdate          # update pods one at a time — zero downtime
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:                      # template for each pod
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: your-dockerhub/devops-backend:latest
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: devops-config     # inject all ConfigMap values as env vars
+            - secretRef:
+                name: devops-secrets    # inject all Secrets as env vars
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"              # 100 millicores = 0.1 CPU core
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:               # restart container if /health fails
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:              # only send traffic when ready
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: backend                 # routes to pods with this label
+  ports:
+    - port: 5000
+      targetPort: 5000
+  type: ClusterIP                # internal only — not exposed outside cluster
